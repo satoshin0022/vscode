@@ -34,6 +34,7 @@ import { ITelemetryService } from '../../../../platform/telemetry/common/telemet
 import { buttonSecondaryBackground, buttonSecondaryForeground, buttonSecondaryHoverBackground } from '../../../../platform/theme/common/colorRegistry.js';
 import { asCssVariable } from '../../../../platform/theme/common/colorUtils.js';
 import { IThemeService } from '../../../../platform/theme/common/themeService.js';
+import { FileReference } from '../../../common/codecs/chatbotPromptCodec/tokens/fileReference.js';
 import { ChatAgentLocation, IChatAgentCommand, IChatAgentData, IChatAgentService, IChatWelcomeMessageContent, isChatWelcomeMessageContent } from '../common/chatAgents.js';
 import { ChatContextKeys } from '../common/chatContextKeys.js';
 import { ChatEditingSessionState, IChatEditingService, IChatEditingSession } from '../common/chatEditingService.js';
@@ -52,10 +53,14 @@ import { ChatDragAndDrop } from './chatDragAndDrop.js';
 import { ChatInputPart } from './chatInputPart.js';
 import { ChatListDelegate, ChatListItemRenderer, IChatRendererDelegate } from './chatListRenderer.js';
 import { ChatEditorOptions } from './chatOptions.js';
+import { ChatViewWelcomePart } from './viewsWelcome/chatViewWelcomeController.js';
+import { Range } from '../../../../editor/common/core/range.js';
+
 import './media/chat.css';
 import './media/chatAgentHover.css';
 import './media/chatViewWelcome.css';
-import { ChatViewWelcomePart } from './viewsWelcome/chatViewWelcomeController.js';
+import { ChatbotPromptReference } from './chatVariables.js';
+import { IFileService } from '../../../../platform/files/common/files.js';
 
 const $ = dom.$;
 
@@ -249,6 +254,7 @@ export class ChatWidget extends Disposable implements IChatWidget {
 		@IChatEditingService private readonly chatEditingService: IChatEditingService,
 		@IStorageService private readonly storageService: IStorageService,
 		@ITelemetryService private readonly telemetryService: ITelemetryService,
+		@IFileService private readonly fileService: IFileService,
 	) {
 		super();
 
@@ -1015,12 +1021,45 @@ export class ChatWidget extends Disposable implements IChatWidget {
 			let workingSet: URI[] | undefined;
 			if (this.location === ChatAgentLocation.EditingSession) {
 				const uniqueWorkingSetEntries = new ResourceSet(); // NOTE: this is used for bookkeeping so the UI can avoid rendering references in the UI that are already shown in the working set
-				const editingSessionAttachedContext: IChatRequestVariableEntry[] = this.inputPart.chatEditWorkingSetFiles.map((v) => {
-					// Pick up everything that the user sees is part of the working set.
-					// This should never exceed the maximum file entries limit above.
-					uniqueWorkingSetEntries.add(v);
-					return this.attachmentModel.asVariableEntry(v);
-				});
+
+				// resolve file references recursively
+				const workingSetFileJobs = this.inputPart.chatEditWorkingSetFiles
+					.map(async (uri) => {
+						if (!uri.path.endsWith('.copilot-prompt')) {
+							return [uri];
+						}
+
+						const fileReference = new FileReference(
+							new Range(-1, -1, -1, -1), // TODO: @legomushroom - is it ok?
+							uri.path,
+						);
+
+						const promptReference = new ChatbotPromptReference(
+							fileReference,
+							URI.file(''), // TODO: legomushroom
+							this.fileService,
+						);
+
+						return (await promptReference.resolve())
+							.flatten()
+							.map((promptReference) => {
+								return promptReference.uri;
+							})
+							// reverse the order so that prompt dependencies appear first
+							.reverse();
+					});
+
+				// wait until all variables are resolved and map to URIs
+				const workingSetFiles = (await Promise.all(workingSetFileJobs))
+					.flat();
+
+				const editingSessionAttachedContext: IChatRequestVariableEntry[] = workingSetFiles
+					.map((v) => {
+						// Pick up everything that the user sees is part of the working set.
+						// This should never exceed the maximum file entries limit above.
+						uniqueWorkingSetEntries.add(v);
+						return this.attachmentModel.asVariableEntry(v);
+					});
 				let maximumFileEntries = this.chatEditingService.editingSessionFileLimit - editingSessionAttachedContext.length;
 
 				// Then take any attachments that are not files
