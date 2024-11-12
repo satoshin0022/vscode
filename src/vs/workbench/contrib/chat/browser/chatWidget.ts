@@ -52,13 +52,10 @@ import { ChatDragAndDrop } from './chatDragAndDrop.js';
 import { ChatInputPart } from './chatInputPart.js';
 import { ChatListDelegate, ChatListItemRenderer, IChatRendererDelegate } from './chatListRenderer.js';
 import { ChatEditorOptions } from './chatOptions.js';
-import { ChatViewWelcomePart } from './viewsWelcome/chatViewWelcomeController.js';
-import { ChatbotPromptReference } from './chatVariables.js';
-import { IFileService } from '../../../../platform/files/common/files.js';
-
 import './media/chat.css';
 import './media/chatAgentHover.css';
 import './media/chatViewWelcome.css';
+import { ChatViewWelcomePart } from './viewsWelcome/chatViewWelcomeController.js';
 
 const $ = dom.$;
 
@@ -252,7 +249,6 @@ export class ChatWidget extends Disposable implements IChatWidget {
 		@IChatEditingService private readonly chatEditingService: IChatEditingService,
 		@IStorageService private readonly storageService: IStorageService,
 		@ITelemetryService private readonly telemetryService: ITelemetryService,
-		@IFileService private readonly fileService: IFileService,
 	) {
 		super();
 
@@ -1019,39 +1015,12 @@ export class ChatWidget extends Disposable implements IChatWidget {
 			let workingSet: URI[] | undefined;
 			if (this.location === ChatAgentLocation.EditingSession) {
 				const uniqueWorkingSetEntries = new ResourceSet(); // NOTE: this is used for bookkeeping so the UI can avoid rendering references in the UI that are already shown in the working set
-
-				// resolve file references recursively
-				const workingSetFileJobs = this.inputPart.chatEditWorkingSetFiles
-					.map(async (uri) => {
-						if (!uri.path.endsWith('.copilot-prompt')) {
-							return [uri];
-						}
-
-						const promptReference = new ChatbotPromptReference(
-							uri,
-							this.fileService,
-						);
-
-						return (await promptReference.resolve())
-							.flatten()
-							.map((promptReference) => {
-								return promptReference.uri;
-							})
-							// reverse the order so that prompt dependencies appear first
-							.reverse();
-					});
-
-				// wait until all variables are resolved and map to URIs
-				const workingSetFiles = (await Promise.all(workingSetFileJobs))
-					.flat();
-
-				const editingSessionAttachedContext: IChatRequestVariableEntry[] = workingSetFiles
-					.map((v) => {
-						// Pick up everything that the user sees is part of the working set.
-						// This should never exceed the maximum file entries limit above.
-						uniqueWorkingSetEntries.add(v);
-						return this.attachmentModel.asVariableEntry(v);
-					});
+				const editingSessionAttachedContext: IChatRequestVariableEntry[] = this.inputPart.chatEditWorkingSetFiles.map((v) => {
+					// Pick up everything that the user sees is part of the working set.
+					// This should never exceed the maximum file entries limit above.
+					uniqueWorkingSetEntries.add(v);
+					return this.attachmentModel.asVariableEntry(v);
+				});
 				let maximumFileEntries = this.chatEditingService.editingSessionFileLimit - editingSessionAttachedContext.length;
 
 				// Then take any attachments that are not files

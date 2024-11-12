@@ -485,9 +485,7 @@ class BuiltinDynamicCompletions extends Disposable {
 	private cacheKey?: { key: string; time: number };
 
 	private async addFileEntries(widget: IChatWidget, result: CompletionList, info: { insert: Range; replace: Range; varWord: IWordAtPosition | null }, token: CancellationToken) {
-
 		const makeFileCompletionItem = (resource: URI): CompletionItem => {
-
 			const basename = this.labelService.getUriBasenameLabel(resource);
 			const text = `${chatVariableLeader}file:${basename}`;
 
