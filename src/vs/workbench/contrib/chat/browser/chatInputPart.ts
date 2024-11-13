@@ -92,7 +92,6 @@ import { ChatEditingSaveAllAction } from './chatEditorSaving.js';
 import { ChatFollowups } from './chatFollowups.js';
 import { IChatViewState } from './chatWidget.js';
 import { ChatImplicitContext } from './contrib/chatImplicitContext.js';
-import { Location } from '../../../../editor/common/languages.js';
 
 const $ = dom.$;
 
@@ -143,13 +142,13 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 			const mainEntry = this._implicitContext.toBaseEntry();
 			contextArr.push(mainEntry);
 
-			// TODO: @legomushroom - remove?
+			// if the implicit context is a file, it can have nested
+			// file references that should be included in the context
 			if (this._implicitContext.childReferences) {
 				const childReferences = this._implicitContext.childReferences
 					.map((uri): IBaseChatRequestVariableEntry => {
 						return {
 							name: basename(uri.path),
-							// -
 							id: mainEntry.id,
 							kind: 'reference',
 							value: uri,
@@ -168,6 +167,9 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 	private _indexOfLastAttachedContextDeletedWithKeyboard: number = -1;
 
 	private _implicitContext: ChatImplicitContext | undefined;
+	public get implicitContext(): ChatImplicitContext | undefined {
+		return this._implicitContext;
+	}
 
 	private _hasFileAttachmentContextKey: IContextKey<boolean>;
 
@@ -565,6 +567,10 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 		const toolbarsContainer = elements.inputToolbars;
 		this.chatEditingSessionWidgetContainer = elements.chatEditingSessionWidgetContainer;
 		this.renderAttachedContext();
+		if (this.options.enableImplicitContext) {
+			this._implicitContext = this._register(new ChatImplicitContext(this.fileService));
+			this._register(this._implicitContext.onDidChangeValue(() => this._handleAttachedContextChange()));
+		}
 
 		this._register(this._attachmentModel.onDidChangeContext(() => this._handleAttachedContextChange()));
 		this.renderChatEditingSessionState(null, widget);
@@ -739,26 +745,6 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 		onDidChangeCursorPosition();
 	}
 
-	public setImplicitContext(
-		uri: URI | Location,
-		isSelection: boolean,
-	): this {
-		if (!this.options.enableImplicitContext) {
-			return this;
-		}
-
-		if (!this._implicitContext) {
-			this._implicitContext = this._register(new ChatImplicitContext(uri, this.fileService));
-			this._implicitContext.isSelection = isSelection;
-			this._register(this._implicitContext.onDidChangeValue(() => {
-				return this._handleAttachedContextChange();
-			}));
-		}
-
-		this._implicitContext.setValue(uri, isSelection);
-
-		return this;
-	}
 
 	private async renderAttachedContext() {
 		const container = this.attachedContextContainer;
