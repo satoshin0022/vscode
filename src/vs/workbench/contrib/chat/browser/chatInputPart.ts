@@ -140,7 +140,6 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 		const contextArr = [...this.attachmentModel.attachments];
 		if (this._implicitContext?.enabled && this._implicitContext.value) {
 			const mainEntry = this._implicitContext.toBaseEntry();
-			contextArr.push(mainEntry);
 
 			// if the implicit context is a file, it can have nested
 			// file references that should be included in the context
@@ -148,13 +147,9 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 				const childReferences = this._implicitContext.validFileReferenceUris
 					.map((uri): IBaseChatRequestVariableEntry => {
 						return {
-							name: basename(uri.path),
-							id: mainEntry.id,
-							kind: 'reference',
+							...mainEntry,
+							name: `file:${basename(uri.path)}`,
 							value: uri,
-							isFile: true,
-							isDynamic: true,
-							modelDescription: mainEntry.modelDescription,
 						};
 					});
 				contextArr.push(...childReferences);
@@ -1050,11 +1045,11 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 			for (const child of childReferences) {
 				entries.unshift({
 					reference: child,
-					state: WorkingSetEntryState.Attached, // TODO: @legomushroom - should it be `attached`?
+					state: WorkingSetEntryState.Attached,
 					kind: 'reference',
 				});
 
-				seenEntries.add(child); // TODO: @legomushroom - is this correct?
+				seenEntries.add(child); // TODO: @legomushroom [PR Question] - is this correct?
 			}
 		}
 		entries.sort((a, b) => {
